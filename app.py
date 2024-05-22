@@ -118,7 +118,7 @@ embedding_model = SentenceTransformer(model_name_or_path="all-mpnet-base-v2",
                                       device="cpu") # choose the device to load the model to (note: GPU will often be *much* faster than CPU)
 
 # Send the model to the GPU
-embedding_model.to("cpu")
+embedding_model.to("cuda")
 
 # Create embeddings one by one on the GPU
 for item in tqdm(pages_and_chunks_over_min_token_len):
@@ -287,30 +287,29 @@ scores, indices
 print_top_results_and_scores(query=query,
                              embeddings=embeddings)
 
-import psutil
-
-# Get CPU available memory
-cpu_memory_bytes = psutil.virtual_memory().total
-cpu_memory_gb = round(cpu_memory_bytes / (2**30))
-print(f"Available CPU memory: {cpu_memory_gb} GB")
-
-# Define the model and quantization configuration based on CPU memory
-if cpu_memory_gb < 8:
-    print(f"Your available CPU memory is {cpu_memory_gb}GB, which may not be sufficient to run large LLMs locally without quantization.")
+# Get GPU available memory
+import torch
+gpu_memory_bytes = torch.cuda.get_device_properties(0).total_memory
+gpu_memory_gb = round(gpu_memory_bytes / (2**30))
+print(f"Available GPU memory: {gpu_memory_gb} GB")
+# Note: the following is Gemma focused, however, there are more and more LLMs of the 2B and 7B size appearing for local use.
+if gpu_memory_gb < 5.1:
+    print(f"Your available GPU memory is {gpu_memory_gb}GB, you may not have enough memory to run a Gemma LLM locally without quantization.")
+elif gpu_memory_gb < 8.1:
+    print(f"GPU memory: {gpu_memory_gb} | Recommended model: Gemma 2B in 4-bit precision.")
     use_quantization_config = True
     model_id = "google/gemma-2b-it"
-elif cpu_memory_gb < 16:
-    print(f"CPU memory: {cpu_memory_gb} GB | Recommended model: Gemma 2B with quantization.")
-    use_quantization_config = True
-    model_id = "google/gemma-2b-it"
-elif cpu_memory_gb < 32:
-    print(f"CPU memory: {cpu_memory_gb} GB | Recommended model: Gemma 2B without quantization or Gemma 7B with quantization.")
+elif gpu_memory_gb < 19.0:
+    print(f"GPU memory: {gpu_memory_gb} | Recommended model: Gemma 2B in float16 or Gemma 7B in 4-bit precision.")
     use_quantization_config = False
     model_id = "google/gemma-2b-it"
-else:
-    print(f"CPU memory: {cpu_memory_gb} GB | Recommend model: Gemma 7B without quantization.")
+elif gpu_memory_gb > 19.0:
+    print(f"GPU memory: {gpu_memory_gb} | Recommend model: Gemma 7B in 4-bit or float16 precision.")
     use_quantization_config = False
     model_id = "google/gemma-7b-it"
+
+print(f"use_quantization_config set to: {use_quantization_config}")
+print(f"model_id set to: {model_id}")
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -330,7 +329,7 @@ llm_model = AutoModelForCausalLM.from_pretrained(
 )
 
 # Optionally, send the model to the CPU if needed
-llm_model.to("cpu")
+llm_model.to("cuda")
 
 
 input_text = query
@@ -350,7 +349,7 @@ prompt = tokenizer.apply_chat_template(conversation=dialogue_template,
 print(f"\nPrompt (formatted):\n{prompt}")
 
 # Tokenize the input text (turn it into numbers) and send it to GPU
-input_ids = tokenizer(prompt, return_tensors="pt").to("cpu")
+input_ids = tokenizer(prompt, return_tensors="pt").to("cuda")
 print(f"Model input (tokenized):\n{input_ids}\n")
 
 # Generate outputs passed on the tokenized input
@@ -417,7 +416,7 @@ context_items = [pages_and_chunks[i] for i in indices]
 prompt = prompt_formatter(query=query,
                           context_items=context_items)
 
-input_ids = tokenizer(prompt, return_tensors="pt").to("cpu")
+input_ids = tokenizer(prompt, return_tensors="pt").to("cuda")
 
 # Generate an output of tokens
 outputs = llm_model.generate(**input_ids,
